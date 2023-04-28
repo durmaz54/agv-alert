@@ -40,8 +40,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-ADC_HandleTypeDef hadc1;
-
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim4;
 DMA_HandleTypeDef hdma_tim4_ch1;
 
@@ -51,12 +50,17 @@ UART_HandleTypeDef huart3;
 /* USER CODE BEGIN PV */
 uint32_t adc0,adc1,adc2;
 
-ADC_ChannelConfTypeDef sconfigPrivate = {0};
 struct temperature{
 	int8_t t1,t2,t3;
 };
 
 struct temperature temp;
+struct agvStat{
+	int16_t lift
+
+};
+uint8_t rxData[8] = { 0 };
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -66,14 +70,14 @@ static void MX_USART1_UART_Init(void);
 static void MX_DMA_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_USART3_UART_Init(void);
-static void MX_ADC1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+/*
 uint32_t Termistor_oku(struct temperature *temp){
 
 	  sconfigPrivate.Channel = ADC_CHANNEL_0;
@@ -110,7 +114,7 @@ uint32_t Termistor_oku(struct temperature *temp){
 
 
 }
-
+*/
 #define MAX_LED 120
 #define USE_BRIGHTNESS 1
 
@@ -223,6 +227,21 @@ uint8_t Alarm_durum() {
   return 0x01;
 }
 
+void liftUp(){
+	htim2.Instance->CCR1 = 900;
+	htim2.Instance->CCR3 = 0;
+
+}
+void liftDown(){
+	htim2.Instance->CCR1 = 0;
+	htim2.Instance->CCR3 = 900;
+
+}
+
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+	  HAL_UART_Receive_IT(&huart1, rxData, 8);
+}
 
 
 
@@ -260,37 +279,42 @@ int main(void)
   MX_DMA_Init();
   MX_TIM4_Init();
   MX_USART3_UART_Init();
-  MX_ADC1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
   struct ekran next;
+  struct agvStat stat;
+  stat.lift =0x00;
+  HAL_UART_Receive_IT(&huart1, rxData, 8);
 
-  int durum=0;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-
-
-
 
    while (1)
      {
 	   for (int n=0; n<MAX_LED; n++)
 	   {
 		   if(n %2){
-			 	  Set_LED(n, 255, 0, 0);
+			 	  Set_LED(n, 0, 206, 209);
 
 		   }else{
-			 	 Set_LED(n, 0, 255, 0);
+			 	 Set_LED(n, 0,206, 209);
 
 		   }
 	   }
 		  Set_Brightness(45);
 		  WS2812_Send();
-	 	  Termistor_oku(&temp);
-	 	  HAL_Delay(3000);
-	 	  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_3);
 
+		  if(rxData[0] == 0xFF){
+			  liftUp();
+		  }
+		  else if(rxData[0] == 0xDD){
+			  liftDown();
+		  }
 
     /* USER CODE END WHILE */
 
@@ -307,7 +331,6 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -336,57 +359,68 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
-  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
-  {
-    Error_Handler();
-  }
 }
 
 /**
-  * @brief ADC1 Initialization Function
+  * @brief TIM2 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_ADC1_Init(void)
+static void MX_TIM2_Init(void)
 {
 
-  /* USER CODE BEGIN ADC1_Init 0 */
+  /* USER CODE BEGIN TIM2_Init 0 */
 
-  /* USER CODE END ADC1_Init 0 */
+  /* USER CODE END TIM2_Init 0 */
 
-  ADC_ChannelConfTypeDef sConfig = {0};
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
 
-  /* USER CODE BEGIN ADC1_Init 1 */
+  /* USER CODE BEGIN TIM2_Init 1 */
 
-  /* USER CODE END ADC1_Init 1 */
-  /** Common config
-  */
-  hadc1.Instance = ADC1;
-  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
-  hadc1.Init.ContinuousConvMode = ENABLE;
-  hadc1.Init.DiscontinuousConvMode = DISABLE;
-  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 1;
-  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 3;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 900;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
   }
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_0;
-  sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN ADC1_Init 2 */
+  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
 
-
-  /* USER CODE END ADC1_Init 2 */
+  /* USER CODE END TIM2_Init 2 */
+  HAL_TIM_MspPostInit(&htim2);
 
 }
 
